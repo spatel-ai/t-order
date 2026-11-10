@@ -3,9 +3,11 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import { PosError } from "./actions";
 import { createSeed } from "./seed";
+import { DEFAULT_SETTINGS } from "./settings";
 import type { ActionCtx, PosData, Staff } from "./types";
 
-export const DATA_KEY = "pos:v1:data";
+// v2: tables are numbered 1–12 and the system starts blank. Older saved data (lettered tables) is ignored.
+export const DATA_KEY = "pos:v2:data";
 export const SESSION_PREFIX = "pos:session:";
 
 // ---------- localStorage: PosData ----------
@@ -28,8 +30,17 @@ function loadData(): PosData {
   } catch {
     parsed = null;
   }
-  dataCache = isPosData(parsed) ? parsed : createSeed();
-  if (!isPosData(parsed)) persistData(dataCache);
+  if (isPosData(parsed)) {
+    // Fill in any fields added since this data was saved.
+    dataCache = {
+      ...parsed,
+      menu: Array.isArray(parsed.menu) ? parsed.menu : [],
+      settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
+    };
+  } else {
+    dataCache = createSeed();
+    persistData(dataCache);
+  }
   return dataCache;
 }
 
@@ -67,8 +78,10 @@ export function usePosData(): PosData | null {
   return useSyncExternalStore(subscribeData, loadData, () => null);
 }
 
-export function resetDemoData() {
-  writeData(createSeed());
+/** Clears every order, payment and activity event. The uploaded menu and restaurant settings are kept. */
+export function clearSalesData() {
+  const { menu, settings } = loadData();
+  writeData({ ...createSeed(), menu, settings });
 }
 
 // ---------- sessionStorage: per-tab UI state ----------
@@ -147,11 +160,13 @@ export function useSessionState<T>(name: string, initial: T): [T, (next: T | ((p
 
 // ---------- staff, toast, dispatch ----------
 
-export const DEFAULT_STAFF: Staff = { name: "Ravi K", role: "Cashier" };
+export const DEFAULT_STAFF: Staff = { name: "Anantram Patel", role: "Cashier" };
 export const MANAGER_STAFF: Staff = { name: "Anita S", role: "Manager" };
 
+const STAFF_KEY = "staff:v2";
+
 export function useStaff() {
-  return useSessionState<Staff>("staff", DEFAULT_STAFF);
+  return useSessionState<Staff>(STAFF_KEY, DEFAULT_STAFF);
 }
 
 export interface ToastMessage {
@@ -164,7 +179,7 @@ export function showToast(message: string, tone: ToastMessage["tone"] = "success
   writeSession<ToastMessage>(SESSION_PREFIX + "toast", { id: Date.now(), tone, message });
 }
 
-export function makeCtx(staff: Staff = readSession(SESSION_PREFIX + "staff", DEFAULT_STAFF)): ActionCtx {
+export function makeCtx(staff: Staff = readSession(SESSION_PREFIX + STAFF_KEY, DEFAULT_STAFF)): ActionCtx {
   return { now: new Date().toISOString(), staff };
 }
 

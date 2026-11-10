@@ -28,7 +28,7 @@ function Swap({ data }: { data: PosData }) {
   const params = useSearchParams();
   const now = useNow();
   const [staff] = useStaff();
-  const occupied = data.sessions.filter(isActive).sort((a, b) => a.tableId.localeCompare(b.tableId));
+  const occupied = data.sessions.filter(isActive).sort((a, b) => Number(a.tableId) - Number(b.tableId));
   const initialA = occupied.find((s) => s.id === params.get("a"))?.id ?? occupied[0]?.id;
   const [a, setA] = useState<string | undefined>(initialA);
   const [b, setB] = useState<string | undefined>(occupied.find((s) => s.id !== initialA)?.id);

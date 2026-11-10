@@ -13,7 +13,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Overlay";
 import { useCartDrafts } from "@/lib/pos/drafts";
 import { activeSessionForTable, cartBill, statusCounts, tableStatus } from "@/lib/pos/selectors";
-import { resetDemoData, showToast, useSessionState } from "@/lib/pos/store";
+import { clearSalesData, showToast, useSessionState } from "@/lib/pos/store";
 import { useNow } from "@/lib/pos/time";
 import type { PosData, Table, TableStatus } from "@/lib/pos/types";
 
@@ -77,7 +77,7 @@ function Dashboard({ data }: { data: PosData }) {
         <div className="flex-1">
           <h1 className="text-display">Tables</h1>
           <p className="text-body text-ink-2">
-            {weekday} service · {data.tables.length} tables · Floor 1
+            {weekday} service · {data.tables.length} tables
           </p>
         </div>
         <ButtonLink href="/swap" variant="secondary" icon={<ArrowLeftRight size={20} />}>
@@ -87,6 +87,17 @@ function Dashboard({ data }: { data: PosData }) {
           New Order
         </Button>
       </div>
+
+      {data.menu.length === 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-accent-soft p-4">
+          <p className="min-w-48 flex-1 text-body">
+            <strong>No menu yet.</strong> Upload your menu to start taking orders.
+          </p>
+          <ButtonLink href="/menu" size="md">
+            Upload menu
+          </ButtonLink>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <FilterControl<Filter>
@@ -107,7 +118,7 @@ function Dashboard({ data }: { data: PosData }) {
       {tables.length === 0 ? (
         <p className="rounded-lg bg-muted p-8 text-center text-body text-ink-2">No tables match this filter.</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(184px,1fr))] sm:gap-4">
           {tables.map((t) => {
             const status = tableStatus(data, t);
             const draft = drafts[t.id];
@@ -118,7 +129,7 @@ function Dashboard({ data }: { data: PosData }) {
                 status={status}
                 session={activeSessionForTable(data, t.id)}
                 now={now}
-                draftTotal={draft ? cartBill(draft.items).subtotal : undefined}
+                draftTotal={draft ? cartBill(draft.items, data.menu).subtotal : undefined}
                 onOpen={() => open(t, status)}
                 actions={actionsFor(t, status)}
               />
@@ -132,7 +143,7 @@ function Dashboard({ data }: { data: PosData }) {
           <h2 id="recent" className="text-h2">
             Recent activity
           </h2>
-          <Link href="/activity" className="text-label text-brand hover:underline">
+          <Link href="/activity" className="inline-flex min-h-10 items-center text-label text-brand hover:underline">
             View timeline →
           </Link>
         </div>
@@ -140,12 +151,13 @@ function Dashboard({ data }: { data: PosData }) {
           {recent.map((e) => (
             <OrderHistoryItem key={e.id} event={e} compact />
           ))}
+          {recent.length === 0 && <p className="col-span-full py-6 text-center text-body text-ink-2">No activity yet. Orders, transfers and payments will show up here.</p>}
         </div>
       </section>
 
       <div className="flex justify-end">
         <Button variant="ghost" size="md" icon={<RotateCcw size={16} />} onClick={() => setResetOpen(true)}>
-          Reset demo data
+          Clear orders & activity
         </Button>
       </div>
 
@@ -183,15 +195,15 @@ function Dashboard({ data }: { data: PosData }) {
       />
       <ConfirmDialog
         open={resetOpen}
-        title="Reset demo data?"
-        body="This clears every session, payment and activity event saved in this browser and restores the starting floor."
-        confirmLabel="Reset"
+        title="Clear all orders and activity?"
+        body="This permanently erases every order, payment and activity event saved in this browser and empties all tables. The menu and settings are kept."
+        confirmLabel="Clear everything"
         tone="danger"
         onCancel={() => setResetOpen(false)}
         onConfirm={() => {
-          resetDemoData();
+          clearSalesData();
           setResetOpen(false);
-          showToast("Demo data restored", "info");
+          showToast("All orders and activity cleared", "info");
         }}
       />
     </div>

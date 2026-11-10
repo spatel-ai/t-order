@@ -1,4 +1,7 @@
-export const TABLE_IDS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"] as const;
+import type { MenuItem } from "./menu";
+import type { RestaurantSettings } from "./settings";
+
+export const TABLE_IDS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"] as const;
 export type TableId = (typeof TABLE_IDS)[number];
 
 export type TableStatus = "available" | "occupied" | "billing" | "reserved";
@@ -91,6 +94,9 @@ export interface PosData {
   sessions: DiningSession[];
   activity: ActivityEvent[];
   seq: { session: number; invoice: number; event: number; txn: number };
+  /** The live menu. Order items copy name and price at order time, so menu edits never change past bills. */
+  menu: MenuItem[];
+  settings: RestaurantSettings;
 }
 
 export interface Staff {

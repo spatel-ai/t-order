@@ -1,6 +1,7 @@
 // Pure state transitions. Each takes the current PosData and returns a new one; nothing here touches storage.
 import { formatINR } from "./money";
-import { menuItem } from "./menu";
+import { findMenuItem, mergeMenus, type MenuItem } from "./menu";
+import type { RestaurantSettings } from "./settings";
 import {
   activeSessionForTable,
   findSession,
@@ -32,11 +33,12 @@ function pushEvent(data: PosData, ev: Omit<ActivityEvent, "id">) {
   data.activity.push({ id: `ev-${data.seq.event++}`, ...ev });
 }
 
-function itemsFromCart(cart: Cart, entryId: string): OrderItem[] {
+function itemsFromCart(menu: MenuItem[], cart: Cart, entryId: string): OrderItem[] {
   const items = Object.entries(cart)
     .filter(([, qty]) => qty > 0)
     .map(([menuId, qty], i) => {
-      const m = menuItem(menuId);
+      const m = findMenuItem(menu, menuId);
+      if (!m) throw new PosError("An item in this order is no longer on the menu. Remove it and try again.");
       return { lineId: `${entryId}-L${i + 1}`, menuId, name: m.name, price: m.price, qty };
     });
   if (!items.length) throw new PosError("Add at least one item first.");
@@ -65,7 +67,7 @@ export function startSession(
 
   const id = `S-${data.seq.session++}`;
   const entryId = `${id}-E1`;
-  const items = itemsFromCart(cart, entryId);
+  const items = itemsFromCart(data.menu, cart, entryId);
   data.sessions.push({
     id,
     tableId,
@@ -98,7 +100,7 @@ export function addEntry(prev: PosData, sessionId: string, cart: Cart, ctx: Acti
   const before = sessionBill(s).subtotal;
   const no = s.entries.length + 1;
   const entryId = `${s.id}-E${no}`;
-  const items = itemsFromCart(cart, entryId);
+  const items = itemsFromCart(data.menu, cart, entryId);
   s.entries.push({ id: entryId, no, sentAt: ctx.now, by: ctx.staff.name, items });
   s.status = "open"; // adding items after a bill was printed re-opens the bill
   const after = sessionBill(s).subtotal;
@@ -271,5 +273,20 @@ export function checkout(prev: PosData, sessionId: string, input: CheckoutInput,
     title: `Table ${s.tableId} released`,
     detail: `Session ${s.id} closed · table set to Available`,
   });
+  return data;
+}
+
+/** Bulk menu upload. "replace" swaps the whole menu; "merge" adds new items and updates matching ids. */
+export function importMenu(prev: PosData, items: MenuItem[], mode: "replace" | "merge"): PosData {
+  if (!items.length) throw new PosError("The upload has no valid menu items.");
+  const data = clone(prev);
+  data.menu = mode === "replace" ? items : mergeMenus(data.menu, items);
+  return data;
+}
+
+export function updateSettings(prev: PosData, settings: RestaurantSettings): PosData {
+  if (!settings.name.trim()) throw new PosError("Restaurant name is required.");
+  const data = clone(prev);
+  data.settings = settings;
   return data;
 }

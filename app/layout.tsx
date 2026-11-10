@@ -7,7 +7,7 @@ import "./globals.css";
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Spice Route POS",
+  title: "Vaishnavi Foods POS",
   description: "Table-based ordering and dynamic billing for restaurants",
 };
 

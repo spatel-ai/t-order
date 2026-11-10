@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { addEntry, cancelItem, checkout, PosError, startSession, swap, transfer } from "./actions";
 import { formatINR } from "./money";
-import { createSeed } from "./seed";
+import { createDemoData as createSeed } from "./fixtures";
 import { activeSessionForTable, dashboardStats, findSession, findTable, sessionBill, statusCounts, tableStatus } from "./selectors";
 import type { ActionCtx, PosData, TableId } from "./types";
 
-const cashier: ActionCtx = { now: "2026-11-11T14:12:00.000Z", staff: { name: "Ravi K", role: "Cashier" } };
+const cashier: ActionCtx = { now: "2026-11-11T14:12:00.000Z", staff: { name: "Anantram Patel", role: "Cashier" } };
 const manager: ActionCtx = { now: "2026-11-11T15:01:00.000Z", staff: { name: "Anita S", role: "Manager" } };
 
 const status = (d: PosData, id: TableId) => tableStatus(d, findTable(d, id)!);
 
 function flowA() {
   const seed = createSeed(new Date("2026-11-11T14:00:00.000Z"));
-  return startSession(seed, "A", { "paneer-butter-masala": 1, "butter-naan": 2, "veg-biryani": 1 }, cashier, 4);
+  return startSession(seed, "1", { "paneer-butter-masala": 1, "butter-naan": 2, "veg-biryani": 1 }, cashier, 4);
 }
 
 function flowB() {
@@ -26,18 +26,18 @@ describe("seed", () => {
     expect(d.tables).toHaveLength(12);
     expect(statusCounts(d)).toEqual({ all: 12, available: 6, occupied: 3, billing: 1, reserved: 2 });
     expect(dashboardStats(d)).toMatchObject({ activeTables: 4, openSales: 472000 });
-    expect(sessionBill(activeSessionForTable(d, "C")!)).toMatchObject({ subtotal: 124000, itemCount: 7 });
-    expect(sessionBill(activeSessionForTable(d, "D")!)).toMatchObject({ subtotal: 86000, itemCount: 4 });
-    expect(sessionBill(activeSessionForTable(d, "F")!)).toMatchObject({ subtotal: 215000, itemCount: 11 });
-    expect(sessionBill(activeSessionForTable(d, "I")!)).toMatchObject({ subtotal: 47000, itemCount: 3 });
+    expect(sessionBill(activeSessionForTable(d, "3")!)).toMatchObject({ subtotal: 124000, itemCount: 7 });
+    expect(sessionBill(activeSessionForTable(d, "4")!)).toMatchObject({ subtotal: 86000, itemCount: 4 });
+    expect(sessionBill(activeSessionForTable(d, "6")!)).toMatchObject({ subtotal: 215000, itemCount: 11 });
+    expect(sessionBill(activeSessionForTable(d, "9")!)).toMatchObject({ subtotal: 47000, itemCount: 3 });
   });
 });
 
 describe("Test Flow A — start order", () => {
-  it("creates session S-1042 on Table A with a ₹530 running total", () => {
+  it("creates session S-1042 on Table 1 with a ₹530 running total", () => {
     const { data, sessionId } = flowA();
     expect(sessionId).toBe("S-1042");
-    expect(status(data, "A")).toBe("occupied");
+    expect(status(data, "1")).toBe("occupied");
     const bill = sessionBill(findSession(data, sessionId)!);
     expect(formatINR(bill.subtotal)).toBe("₹530");
     expect(bill.itemCount).toBe(4);
@@ -45,7 +45,7 @@ describe("Test Flow A — start order", () => {
 
   it("refuses a second session on an occupied table", () => {
     const { data } = flowA();
-    expect(() => startSession(data, "A", { "water-bottle": 1 }, cashier)).toThrow(PosError);
+    expect(() => startSession(data, "1", { "water-bottle": 1 }, cashier)).toThrow(PosError);
   });
 });
 
@@ -53,7 +53,7 @@ describe("Test Flow B — add more items", () => {
   it("appends Order #2 to the same session and updates the total to ₹650", () => {
     const { data, sessionId } = flowB();
     const s = findSession(data, sessionId)!;
-    expect(data.sessions.filter((x) => x.tableId === "A" && x.status !== "paid")).toHaveLength(1);
+    expect(data.sessions.filter((x) => x.tableId === "1" && x.status !== "paid")).toHaveLength(1);
     expect(s.entries.map((e) => e.no)).toEqual([1, 2]);
     expect(s.entries[0].items.map((i) => [i.name, i.qty])).toEqual([
       ["Paneer Butter Masala", 1],
@@ -74,34 +74,34 @@ describe("Test Flow B — add more items", () => {
 describe("Test Flow C — transfer table", () => {
   it("moves the session A → B, keeping all entries and ₹650", () => {
     const { data, sessionId } = flowB();
-    const after = transfer(data, sessionId, "B", cashier);
-    expect(status(after, "A")).toBe("available");
-    expect(status(after, "B")).toBe("occupied");
-    const s = activeSessionForTable(after, "B")!;
+    const after = transfer(data, sessionId, "2", cashier);
+    expect(status(after, "1")).toBe("available");
+    expect(status(after, "2")).toBe("occupied");
+    const s = activeSessionForTable(after, "2")!;
     expect(s.id).toBe(sessionId);
     expect(s.entries).toHaveLength(2);
     expect(formatINR(sessionBill(s).subtotal)).toBe("₹650");
-    expect(s.tableHistory).toEqual(["A", "B"]);
+    expect(s.tableHistory).toEqual(["1", "2"]);
   });
 
   it("only allows available destinations", () => {
     const { data, sessionId } = flowB();
-    expect(() => transfer(data, sessionId, "C", cashier)).toThrow(/not available/);
-    expect(() => transfer(data, sessionId, "H", cashier)).toThrow(/not available/); // reserved
+    expect(() => transfer(data, sessionId, "3", cashier)).toThrow(/not available/);
+    expect(() => transfer(data, sessionId, "8", cashier)).toThrow(/not available/); // reserved
   });
 });
 
 describe("Test Flow D — checkout via UPI", () => {
-  it("charges ₹682.50 incl. GST, closes the session and releases Table B", () => {
+  it("charges ₹682.50 incl. GST, closes the session and releases Table 2", () => {
     const { data, sessionId } = flowB();
-    const moved = transfer(data, sessionId, "B", cashier);
+    const moved = transfer(data, sessionId, "2", cashier);
     const bill = sessionBill(findSession(moved, sessionId)!);
     expect([bill.cgst, bill.sgst, bill.total]).toEqual([1625, 1625, 68250]);
     const paid = checkout(moved, sessionId, { method: "UPI" }, cashier);
     const s = findSession(paid, sessionId)!;
     expect(s.status).toBe("paid");
     expect(s.payment).toMatchObject({ method: "UPI", amount: 68250, txnId: "UPI-88213" });
-    expect(status(paid, "B")).toBe("available");
+    expect(status(paid, "2")).toBe("available");
     expect(paid.activity.slice(-2).map((e) => e.type)).toEqual(["paid", "released"]);
   });
 
@@ -119,11 +119,11 @@ describe("Test Flow D — checkout via UPI", () => {
 describe("Test Flow E — swap occupied tables", () => {
   it("exchanges C and D without altering either session", () => {
     const seed = createSeed();
-    const c = activeSessionForTable(seed, "C")!;
-    const d = activeSessionForTable(seed, "D")!;
+    const c = activeSessionForTable(seed, "3")!;
+    const d = activeSessionForTable(seed, "4")!;
     const after = swap(seed, c.id, d.id, manager);
-    const newC = activeSessionForTable(after, "C")!;
-    const newD = activeSessionForTable(after, "D")!;
+    const newC = activeSessionForTable(after, "3")!;
+    const newD = activeSessionForTable(after, "4")!;
     expect(newC.id).toBe("S-1040");
     expect(newD.id).toBe("S-1038");
     expect(sessionBill(newC).subtotal).toBe(sessionBill(d).subtotal);
@@ -141,6 +141,6 @@ describe("Test Flow E — swap occupied tables", () => {
 it("never mutates the previous state", () => {
   const seed = createSeed();
   const snapshot = JSON.stringify(seed);
-  startSession(seed, "A", { "water-bottle": 1 }, cashier);
+  startSession(seed, "1", { "water-bottle": 1 }, cashier);
   expect(JSON.stringify(seed)).toBe(snapshot);
 });

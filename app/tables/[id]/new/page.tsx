@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { startSession } from "@/lib/pos/actions";
 import { bump, useCartDraft } from "@/lib/pos/drafts";
 import { formatINR } from "@/lib/pos/money";
-import { activeSessionForTable, cartBill, cartLines, findTable, tableStatus } from "@/lib/pos/selectors";
+import { activeSessionForTable, cartBill, cartLines, findTable, pruneCart, tableStatus } from "@/lib/pos/selectors";
 import { dispatch, showToast } from "@/lib/pos/store";
 import type { PosData, Table } from "@/lib/pos/types";
 
@@ -40,13 +40,13 @@ function NewOrder({ data, table }: { data: PosData; table: Table }) {
     if (active && !sentRef.current) router.replace(`/tables/${table.id}?add=1`);
   }, [active, router, table.id]);
 
-  const lines = cartLines(draft.items);
-  const bill = cartBill(draft.items);
+  const lines = cartLines(draft.items, data.menu);
+  const bill = cartBill(draft.items, data.menu);
   const empty = lines.length === 0;
 
   const send = () => {
     sentRef.current = true;
-    const ok = dispatch((d, ctx) => startSession(d, table.id, draft.items, ctx, draft.guests).data);
+    const ok = dispatch((d, ctx) => startSession(d, table.id, pruneCart(draft.items, d.menu), ctx, draft.guests).data);
     if (!ok) {
       sentRef.current = false;
       return;
@@ -62,7 +62,7 @@ function NewOrder({ data, table }: { data: PosData; table: Table }) {
   };
 
   const sendButton = (
-    <Button icon={<Check size={20} />} disabled={empty} onClick={send} className="flex-1">
+    <Button icon={<Check size={20} />} disabled={empty} onClick={send} className="flex-1 px-4">
       Send to Kitchen
     </Button>
   );
@@ -124,7 +124,7 @@ function NewOrder({ data, table }: { data: PosData; table: Table }) {
       </div>
       <p className="text-caption text-ink-2">GST 5% (CGST 2.5% + SGST 2.5%) is applied at checkout.</p>
       <div className="flex gap-3">
-        <Button variant="secondary" disabled={empty} onClick={saveDraft} className="flex-1">
+        <Button variant="secondary" disabled={empty} onClick={saveDraft} className="px-4">
           Save Draft
         </Button>
         {sendButton}
@@ -133,8 +133,8 @@ function NewOrder({ data, table }: { data: PosData; table: Table }) {
   );
 
   return (
-    <div className="xl:grid xl:grid-cols-[1fr_440px]">
-      <section className="flex flex-col gap-4 px-4 pb-28 pt-4 lg:px-8 xl:pb-8">
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+      <section className="flex min-w-0 flex-col gap-3 px-4 pb-28 pt-4 lg:px-6 lg:pb-8">
         <BackLink href="/" label="Tables" />
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-h1">New order · Table {table.id}</h1>
@@ -154,7 +154,7 @@ function NewOrder({ data, table }: { data: PosData; table: Table }) {
         subtitle="Draft — nothing is sent until you tap Send to Kitchen."
         body={body}
         footer={footer}
-        bar={{ label: `${bill.itemCount} items · running total`, value: formatINR(bill.subtotal), action: sendButton }}
+        bar={{ label: `${bill.itemCount} ${bill.itemCount === 1 ? "item" : "items"}`, value: formatINR(bill.subtotal), action: sendButton }}
       />
     </div>
   );

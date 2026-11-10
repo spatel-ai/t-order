@@ -1,17 +1,21 @@
 "use client";
-import { Check, QrCode } from "lucide-react";
+import { Check, Printer, QrCode } from "lucide-react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { BillingSummary } from "@/components/pos/BillingSummary";
 import { PaymentSelector } from "@/components/pos/PaymentSelector";
 import { BackLink, EmptyState, WithData } from "@/components/pos/Shell";
 import { StatusBadge } from "@/components/pos/StatusBadge";
+import { PrintPortal, ThermalBill, type UpiRequest } from "@/components/pos/ThermalBill";
 import { Button } from "@/components/ui/Button";
 import { checkout, requestBill, setDiscount, type CheckoutInput } from "@/lib/pos/actions";
 import { formatINR, rupees } from "@/lib/pos/money";
-import { activeSessionForTable, findTable, sessionBill, tableStatus } from "@/lib/pos/selectors";
-import { dispatch, showToast } from "@/lib/pos/store";
-import { formatTime } from "@/lib/pos/time";
+import { activeSessionForTable, findTable, orderIdFor, sessionBill, tableStatus } from "@/lib/pos/selectors";
+import { upiPayUri } from "@/lib/pos/settings";
+import { dispatch, showToast, useStaff } from "@/lib/pos/store";
+import { formatTime, useNow } from "@/lib/pos/time";
 import type { DiningSession, PaymentMethod, PaymentPart, PosData, Table } from "@/lib/pos/types";
 
 export default function CheckoutPage() {
@@ -35,7 +39,43 @@ export default function CheckoutPage() {
 
 const DISCOUNTS = [0, 5, 10] as const;
 
-function Checkout({ data, table, session, onPaid }: { data: PosData; table: Table; session: DiningSession; onPaid: (sid: string) => void }) {
+function UpiPanel({ upi, upiId, label }: { upi: UpiRequest | null; upiId: string; label: string }) {
+  if (!upi) {
+    return (
+      <div className="flex items-center gap-4">
+        <div className="flex size-24 shrink-0 items-center justify-center rounded-sm border border-dashed border-line-strong bg-surface text-ink-2">
+          <QrCode size={40} aria-hidden />
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-body font-semibold">{upiId ? "Enter the amounts to show the QR" : "No UPI ID set up yet"}</p>
+          {!upiId && (
+            <p className="text-caption text-ink-2">
+              Add the restaurant’s UPI ID in{" "}
+              <Link href="/settings" className="font-semibold text-brand underline">
+                Settings
+              </Link>{" "}
+              to show a scan-to-pay QR here and on the printed bill.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-4">
+      <div className="shrink-0 rounded-sm border border-line-strong bg-white p-1">
+        <QRCodeSVG value={upi.uri} size={132} level="M" marginSize={2} title={`UPI payment QR for ${formatINR(upi.amount, { decimals: "always" })}`} />
+      </div>
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-body font-semibold">{label}</p>
+        <p className="break-all text-caption text-ink-2">{upiId}</p>
+        <p className="text-caption text-ink-2">Confirm only after the guest’s app shows success and the money reaches your account.</p>
+      </div>
+    </div>
+  );
+}
+
+function Checkout({ data, table, session, onPaid }: { data: PosData; table: Table; session: DiningSession; onPaid: (sid: string | null) => void }) {
   const router = useRouter();
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [tendered, setTendered] = useState("");
@@ -57,16 +97,27 @@ function Checkout({ data, table, session, onPaid }: { data: PosData; table: Tabl
     { method: "UPI", amount: bill.total - splitCashPaise },
   ];
 
+  // The QR carries the exact amount due by UPI: the whole bill, or the UPI part of a split.
+  const settings = data.settings;
+  const [staff] = useStaff();
+  const now = useNow();
+  const splitValid = splitCashPaise > 0 && splitCashPaise < bill.total;
+  const upiAmount = method === "Split" ? (splitValid ? bill.total - splitCashPaise : 0) : bill.total;
+  const upiUri = upiPayUri(settings, upiAmount, `Table ${table.id} ${orderIdFor(session.id)}`);
+  const upi: UpiRequest | null = upiUri
+    ? { uri: upiUri, amount: upiAmount, note: method === "Split" ? `Balance after ${formatINR(splitCashPaise, { decimals: "always" })} cash` : undefined }
+    : null;
+
   const canPay =
     bill.total > 0 &&
     (method !== "Cash" || (Number.isFinite(tenderedPaise) && change >= 0)) &&
-    (method !== "Split" || (splitCashPaise > 0 && splitCashPaise < bill.total));
+    (method !== "Split" || splitValid);
 
   const pay = () => {
     const input: CheckoutInput =
       method === "Cash" ? { method, tendered: tenderedPaise } : method === "Split" ? { method, parts: splitParts } : { method };
     onPaid(session.id);
-    if (!dispatch((d, ctx) => checkout(d, session.id, input, ctx))) return;
+    if (!dispatch((d, ctx) => checkout(d, session.id, input, ctx))) return onPaid(null);
     showToast(`Paid ${formatINR(bill.total)} via ${method} · Table ${table.id} released`);
     router.push(`/receipt/${session.id}`);
   };
@@ -74,8 +125,8 @@ function Checkout({ data, table, session, onPaid }: { data: PosData; table: Tabl
   const items = session.entries.flatMap((e) => e.items.map((i) => ({ ...i, entryNo: e.no })));
 
   return (
-    <div className="xl:grid xl:grid-cols-[1fr_460px]">
-      <section className="flex flex-col gap-4 px-4 pt-4 pb-6 lg:px-8">
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_440px]">
+      <section className="flex min-w-0 flex-col gap-4 px-4 pt-4 pb-6 lg:px-6">
         <BackLink href={`/tables/${table.id}`} label={`Table ${table.id}`} />
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-h1">Checkout · Table {table.id}</h1>
@@ -127,7 +178,7 @@ function Checkout({ data, table, session, onPaid }: { data: PosData; table: Tabl
         </div>
       </section>
 
-      <aside className="flex flex-col gap-4 border-line bg-surface px-4 py-6 lg:px-8 xl:sticky xl:top-[73px] xl:h-[calc(100dvh-73px)] xl:overflow-y-auto xl:border-l xl:px-6">
+      <aside className="flex flex-col gap-4 border-line bg-surface px-4 py-6 min-w-0 lg:sticky lg:top-[73px] lg:h-[calc(100dvh-73px)] lg:overflow-y-auto lg:border-l lg:px-5 xl:px-6">
         <h2 className="text-h2">Payment</h2>
         <BillingSummary bill={bill} />
         <h3 className="text-label text-ink-2">Payment method</h3>
@@ -161,16 +212,7 @@ function Checkout({ data, table, session, onPaid }: { data: PosData; table: Tabl
             </>
           )}
           {method === "UPI" && (
-            <div className="flex items-center gap-4">
-              <div className="flex size-24 items-center justify-center rounded-sm border border-line-strong bg-surface" aria-label="UPI QR code placeholder">
-                <QrCode size={56} aria-hidden />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-body font-semibold">Scan to pay {formatINR(bill.total)}</p>
-                <p className="text-caption text-ink-2">spiceroute@hdfcbank</p>
-                <p className="text-caption text-ink-2">Confirm once the guest’s app shows success.</p>
-              </div>
-            </div>
+            <UpiPanel upi={upi} upiId={settings.upiId} label={`Scan to pay ${formatINR(bill.total, { decimals: "always" })}`} />
           )}
           {method === "Card" && (
             <label className="flex flex-col gap-1 text-label text-ink-2">
@@ -200,15 +242,22 @@ function Checkout({ data, table, session, onPaid }: { data: PosData; table: Tabl
                 <span className="text-ink-2">Remaining via UPI</span>
                 <span className="font-semibold tabular-nums">{formatINR(bill.total - splitCashPaise, { decimals: "always" })}</span>
               </div>
+              <UpiPanel upi={upi} upiId={settings.upiId} label={`Scan to pay ${formatINR(upiAmount, { decimals: "always" })} by UPI`} />
             </>
           )}
         </div>
         <div className="flex-1" />
+        <Button variant="secondary" icon={<Printer size={20} />} disabled={bill.total <= 0} onClick={() => window.print()}>
+          Print bill{upi ? " with payment QR" : ""}
+        </Button>
         <Button icon={<Check size={20} />} disabled={!canPay} onClick={pay}>
           {method === "Cash" ? `Confirm cash payment` : `Confirm ${formatINR(bill.total, { decimals: "always" })} received`}
         </Button>
         <p className="text-caption text-ink-2">Payment success closes session {session.id} and releases Table {table.id}.</p>
       </aside>
+      <PrintPortal paperWidth={settings.paperWidth}>
+        <ThermalBill settings={settings} session={session} bill={bill} at={new Date(now).toISOString()} cashier={staff.name} upi={upi} />
+      </PrintPortal>
     </div>
   );
 }

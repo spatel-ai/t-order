@@ -1,7 +1,6 @@
-import { Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { formatINR } from "@/lib/pos/money";
 import type { MenuItem } from "@/lib/pos/menu";
-import { QuantityStepper } from "./QuantityStepper";
 
 export function DietMark({ diet }: { diet: MenuItem["diet"] }) {
   const color = diet === "veg" ? "border-avail text-avail" : "border-danger text-danger";
@@ -13,37 +12,43 @@ export function DietMark({ diet }: { diet: MenuItem["diet"] }) {
   );
 }
 
-/** Tap the tile (or +) to add. Once added it shows a compact stepper and a green outline. */
+/**
+ * Compact dish tile. Tap anywhere on it to add one. Once added, the bottom strip becomes a full-width
+ * − qty + stepper, so the controls stay easy to hit however narrow the tile is.
+ */
 export function MenuItemCard({ item, qty, onAdd, onRemove }: { item: MenuItem; qty: number; onAdd: () => void; onRemove: () => void }) {
   const added = qty > 0;
   return (
-    <div
-      className={`flex flex-col gap-3 rounded-lg bg-surface p-4 shadow-card ${added ? "border-2 border-brand p-[15px]" : "border border-line"}`}
-    >
-      <button type="button" onClick={onAdd} className="flex flex-1 flex-col gap-1 text-left" aria-label={`Add ${item.name}, ${formatINR(item.price)}`}>
-        <span className="flex gap-2">
+    <div className={`flex min-w-0 flex-col rounded-md bg-surface shadow-card ${added ? "border-2 border-brand" : "border border-line p-px"}`}>
+      <button type="button" onClick={onAdd} className="flex flex-1 flex-col gap-1 rounded-t-md p-2.5 pb-2 text-left" aria-label={`Add ${item.name}, ${formatINR(item.price)}`}>
+        <span className="flex gap-1.5">
           <DietMark diet={item.diet} />
-          <span className="text-body font-semibold">{item.name}</span>
+          <span className="line-clamp-2 text-label font-semibold leading-[18px] break-words">{item.name}</span>
         </span>
-        <span className="text-caption text-ink-2">
-          {item.category} · {item.portion}
+        <span className="mt-auto flex items-baseline gap-1.5 pt-1">
+          <span className="text-body font-semibold tabular-nums">{formatINR(item.price)}</span>
+          {item.portion && <span className="truncate text-caption text-ink-2">{item.portion}</span>}
         </span>
       </button>
-      <div className="flex min-h-11 items-center justify-between gap-2">
-        <span className="text-body font-semibold">{formatINR(item.price)}</span>
-        {added ? (
-          <QuantityStepper size="compact" value={qty} label={item.name} onIncrement={onAdd} onDecrement={onRemove} />
-        ) : (
-          <button
-            type="button"
-            onClick={onAdd}
-            aria-label={`Add ${item.name}`}
-            className="inline-flex size-11 items-center justify-center rounded-md bg-brand-soft text-brand hover:bg-brand hover:text-white"
-          >
-            <Plus size={20} />
+      {added ? (
+        <div className="flex items-center gap-1 p-1 pt-0" role="group" aria-label={`Quantity for ${item.name}`}>
+          <button type="button" onClick={onRemove} aria-label={`Remove one ${item.name}`} className="inline-flex h-10 flex-1 items-center justify-center rounded-sm bg-muted hover:bg-line">
+            <Minus size={18} />
           </button>
-        )}
-      </div>
+          <span className="w-8 text-center text-body font-bold tabular-nums" aria-live="polite">
+            {qty}
+          </span>
+          <button type="button" onClick={onAdd} aria-label={`Add one ${item.name}`} className="inline-flex h-10 flex-1 items-center justify-center rounded-sm bg-brand text-white hover:bg-brand-hover">
+            <Plus size={18} />
+          </button>
+        </div>
+      ) : (
+        <div className="p-1 pt-0">
+          <button type="button" onClick={onAdd} tabIndex={-1} aria-hidden className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-sm bg-brand-soft text-label font-semibold text-brand hover:bg-brand hover:text-white">
+            <Plus size={16} /> Add
+          </button>
+        </div>
+      )}
     </div>
   );
 }

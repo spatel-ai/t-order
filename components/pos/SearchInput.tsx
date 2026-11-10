@@ -25,10 +25,10 @@ export function SearchInput({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && onEnter?.()}
         placeholder={placeholder}
-        className="min-w-0 flex-1 bg-transparent py-3 text-body outline-none placeholder:text-ink-2 [&::-webkit-search-cancel-button]:hidden"
+        className="min-w-0 flex-1 bg-transparent py-3 text-body outline-none focus-visible:outline-none placeholder:text-ink-2 [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
-        <button type="button" onClick={() => onChange("")} aria-label="Clear search" className="text-ink-2 hover:text-ink">
+        <button type="button" onClick={() => onChange("")} aria-label="Clear search" className="-mr-3 inline-flex size-10 shrink-0 items-center justify-center text-ink-2 hover:text-ink">
           <X size={16} />
         </button>
       )}

@@ -19,7 +19,7 @@ const SIZES: Record<ButtonSize, string> = {
 };
 
 export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "lg", extra = "") {
-  return `inline-flex items-center justify-center gap-2 rounded-md transition disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${SIZES[size]} ${extra}`;
+  return `inline-flex items-center justify-center gap-2 rounded-md whitespace-nowrap transition [&>svg]:shrink-0 disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${SIZES[size]} ${extra}`;
 }
 
 type BaseProps = { variant?: ButtonVariant; size?: ButtonSize; icon?: ReactNode };

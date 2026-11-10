@@ -16,7 +16,7 @@ import { Drawer } from "@/components/ui/Overlay";
 import { addEntry, cancelItem, transfer } from "@/lib/pos/actions";
 import { bump, useAdditionDraft } from "@/lib/pos/drafts";
 import { formatINR } from "@/lib/pos/money";
-import { activeSessionForTable, availableTables, cartBill, cartLines, findTable, sessionBill, tableStatus } from "@/lib/pos/selectors";
+import { activeSessionForTable, availableTables, cartBill, cartLines, findTable, pruneCart, sessionBill, tableStatus } from "@/lib/pos/selectors";
 import { dispatch, showToast } from "@/lib/pos/store";
 import { formatTime } from "@/lib/pos/time";
 import type { DiningSession, OrderItem, PosData, Table } from "@/lib/pos/types";
@@ -69,8 +69,8 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
   const addToDraft = (menuId: string, delta: number) => additions.update((c) => bump(c, menuId, delta));
 
   const confirmAdditions = () => {
-    const draftTotal = cartBill(additions.items).subtotal;
-    const ok = dispatch((d, ctx) => addEntry(d, session.id, additions.items, ctx));
+    const draftTotal = cartBill(additions.items, data.menu).subtotal;
+    const ok = dispatch((d, ctx) => addEntry(d, session.id, pruneCart(additions.items, d.menu), ctx));
     if (!ok) return;
     additions.clear();
     showToast(`Order #${session.entries.length + 1} added · running bill ${formatINR(bill.subtotal + draftTotal)}`);
@@ -151,12 +151,12 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
     </>
   );
 
-  const draftLines = cartLines(additions.items);
-  const draftTotal = cartBill(additions.items).subtotal;
+  const draftLines = cartLines(additions.items, data.menu);
+  const draftTotal = cartBill(additions.items, data.menu).subtotal;
 
   return (
-    <div className="xl:grid xl:grid-cols-[1fr_460px]">
-      <section className="flex flex-col gap-4 px-4 pb-28 pt-4 lg:px-8 xl:pb-8">
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+      <section className="flex min-w-0 flex-col gap-3 px-4 pb-28 pt-4 lg:px-6 lg:pb-8">
         <BackLink href="/" label="Tables" />
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-h1">
@@ -190,7 +190,7 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
             />
           </>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+          <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_380px]">
             <div className="rounded-lg border border-line bg-surface p-4 lg:p-6">
               <h2 className="text-h2">Chronological order entries</h2>
               <div className="divide-y divide-line">
@@ -222,7 +222,7 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
         body={panelBody}
         footer={panelFooter}
         bar={{
-          label: `Table ${table.id} · running bill`,
+          label: `Table ${table.id} · bill`,
           value: formatINR(bill.subtotal),
           action: (
             <Button variant="accent" icon={<Plus size={20} />} onClick={() => setParam("add", "1")}>

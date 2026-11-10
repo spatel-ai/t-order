@@ -1,6 +1,6 @@
 import { computeBill, type Bill } from "./money";
 import type { Cart, DiningSession, OrderItem, PosData, Table, TableId, TableStatus } from "./types";
-import { menuItem } from "./menu";
+import { findMenuItem, type MenuItem } from "./menu";
 
 export const isActive = (s: DiningSession) => s.status !== "paid";
 
@@ -51,18 +51,23 @@ export function dashboardStats(data: PosData) {
   };
 }
 
-export function cartBill(cart: Cart): Bill {
-  return computeBill(
-    Object.entries(cart)
-      .filter(([, qty]) => qty > 0)
-      .map(([id, qty]) => ({ price: menuItem(id).price, qty })),
-  );
-}
-
-export function cartLines(cart: Cart) {
+/** Draft lines for a cart. Items that have since been removed from the menu are dropped. */
+export function cartLines(cart: Cart, menu: MenuItem[]) {
   return Object.entries(cart)
     .filter(([, qty]) => qty > 0)
-    .map(([id, qty]) => ({ item: menuItem(id), qty }));
+    .flatMap(([id, qty]) => {
+      const item = findMenuItem(menu, id);
+      return item ? [{ item, qty }] : [];
+    });
+}
+
+export function cartBill(cart: Cart, menu: MenuItem[]): Bill {
+  return computeBill(cartLines(cart, menu).map(({ item, qty }) => ({ price: item.price, qty })));
+}
+
+/** The cart without entries whose menu item no longer exists. */
+export function pruneCart(cart: Cart, menu: MenuItem[]): Cart {
+  return Object.fromEntries(cartLines(cart, menu).map(({ item, qty }) => [item.id, qty]));
 }
 
 export function summarizeItems(items: { name: string; qty: number }[]) {
