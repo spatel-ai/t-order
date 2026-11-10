@@ -1,4 +1,4 @@
-# Spice Route POS — Table ordering & dynamic billing
+# Vaishnavi Foods POS — Table ordering & dynamic billing
 
 A frontend-only Next.js implementation of the Restaurant POS designed in Figma
 (`wkR7N4AiDQmjTlqLGrxwhy`). There is no backend: all data lives in the browser's
@@ -13,7 +13,29 @@ npm test           # domain tests for test flows A–E
 npm run lint && npm run typecheck && npm run build
 ```
 
-Use **Reset demo data** at the bottom of the dashboard to restore the starting floor.
+The system starts blank: tables 1–12, no menu, no orders, no activity. **Clear orders & activity** at the bottom of the dashboard erases all orders and payments again (the menu and settings are kept).
+
+## Setting up the restaurant
+
+1. **Settings** (gear icon): restaurant name, address, phone, GSTIN, **UPI ID**, paper width (80 mm / 58 mm) and the bill footer. The name defaults to "Vaishnavi Foods"; everything else starts empty.
+2. **Menu → Upload menu JSON**: upload every dish in one file. A preview lists valid items and any skipped rows before anything changes; choose *Replace the entire menu* or *Add to the current menu*. *Export* downloads the current menu in the same format.
+
+```json
+{ "items": [
+  { "name": "Masala Dosa", "price": 90, "category": "South Indian", "diet": "veg", "portion": "1 pc", "code": "MD" },
+  { "name": "Filter Coffee", "price": 30 }
+] }
+```
+
+`name` and `price` (rupees) are required. `category` defaults to "Other", `diet` (`veg` / `nonveg`, or `"veg": true/false`) to veg. Open tables keep the names and prices they were ordered at.
+
+## Thermal printing and the payment QR
+
+- **Checkout → Print bill** prints the bill for the guest with a **UPI scan-to-pay QR** carrying the exact amount due (for a split payment, the UPI part). The same QR is shown on screen for UPI and Split.
+- **Receipt → Print receipt** prints the paid tax invoice.
+- The QR is a standard `upi://pay` link, so GPay, PhonePe, Paytm and any other UPI app open with the payee and amount filled in. No QR is shown until a UPI ID is saved in Settings.
+- Printing uses the browser's print dialog, so it works with any thermal printer installed on the computer (USB, network or Bluetooth). The bill is one black-and-white column, 72 mm wide on an 80 mm roll or 48 mm on a 58 mm roll. In the print dialog pick the receipt printer, set margins to *None* and switch off headers and footers. For printing with no dialog, start Chrome with `--kiosk-printing`.
+- The POS does not know whether a UPI payment arrived: the cashier confirms it after checking the bank or UPI app.
 
 ## What's where
 
@@ -25,7 +47,10 @@ Use **Reset demo data** at the bottom of the dashboard to restore the starting f
 | `lib/pos/money.ts` | Integer-paise money maths, GST 5% (CGST 2.5% + SGST 2.5%), INR formatting |
 | `lib/pos/store.ts` | localStorage / sessionStorage persistence via `useSyncExternalStore` |
 | `lib/pos/drafts.ts` | Tab-scoped cart and "add items" drafts |
-| `lib/pos/seed.ts` | Demo floor matching the Figma file |
+| `lib/pos/seed.ts` | The blank starting state (tables 1–12) |
+| `lib/pos/menu.ts` | Menu JSON parsing / merge / export |
+| `lib/pos/settings.ts` | Restaurant settings, UPI link builder, UPI ID and GSTIN validation |
+| `components/pos/ThermalBill.tsx` | The printed bill / tax invoice and the print portal |
 | `components/pos/*` | One component per Figma component (TableCard, StatusBadge, MenuItemCard, OrderItemRow, QuantityStepper, SearchInput, FilterControl, BillingSummary, PaymentSelector, ConfirmDialog, TransferModal, Toast, OrderHistoryItem, AppHeader) |
 | `app/globals.css` | Figma design tokens as Tailwind v4 theme variables and type-ramp utilities |
 
@@ -44,10 +69,10 @@ Use **Reset demo data** at the bottom of the dashboard to restore the starting f
 
 | Key | Storage | Contents |
 | --- | --- | --- |
-| `pos:v1:data` | localStorage | Tables, sessions, payments, activity log, ID sequences. Shared by every tab and kept in sync across tabs via the `storage` event. |
+| `pos:v2:data` | localStorage | Tables, sessions, payments, activity log, ID sequences, menu and restaurant settings (both survive **Clear orders & activity**). Shared by every tab and kept in sync across tabs via the `storage` event. |
 | `pos:session:carts` | sessionStorage | New-order cart drafts per table ("Save Draft") |
 | `pos:session:additions` | sessionStorage | Pending "Add Items" drafts per session |
-| `pos:session:staff` | sessionStorage | Signed-in staff (click the avatar to switch Cashier ↔ Manager — demo only) |
+| `pos:session:staff:v2` | sessionStorage | Signed-in staff (click the avatar to switch Cashier ↔ Manager — demo only) |
 | `pos:session:toast`, `…Filter`, `…Query` | sessionStorage | Last notification, filters, dashboard search |
 
 Drafts are per tab on purpose: two waiters on two tabs don't overwrite each other's unsent carts. Confirmed orders go to localStorage and show up everywhere.
@@ -56,20 +81,23 @@ The swap screen's manager PIN (`1234`) is a demo placeholder. A frontend-only ap
 
 ## Test flows
 
+The app starts blank, so upload a menu first (Menu → Upload menu JSON). Then:
+
 | Flow | Steps | Expected |
 | --- | --- | --- |
-| A | Table A → add Paneer Butter Masala, Butter Naan ×2, Veg Biryani → Send to Kitchen | Running bill ₹530, session S-1042 |
-| B | Add Items → Water Bottle ×2, Gulab Jamun → Confirm Additions | Same session, Order #2, ₹650 |
-| C | Transfer → Table B → Confirm Transfer | A Available, B Occupied ₹650 |
-| D | Table B → Checkout → UPI → Confirm ₹682.50 received | Receipt (S-1042, Table B from A, UPI txn), B Available |
-| E | Swap → C and D → PIN 1234 → Confirm Swap | C shows S-1040 ₹860, D shows S-1038 ₹1,240 |
+| A | Table 1 → add dishes → Send to Kitchen | Table 1 Occupied, session S-1, running bill shown |
+| B | Add Items → more dishes → Confirm Additions | Same session, Order #2, bill increases |
+| C | Transfer → Table 2 → Confirm Transfer | Table 1 Available, Table 2 Occupied with the same bill |
+| D | Table 2 → Checkout → Print bill / UPI → Confirm received | Receipt INV-1 (Table 2 from 1), Table 2 Available |
+| E | Swap → two occupied tables → PIN 1234 → Confirm Swap | The two sessions exchange tables, bills unchanged |
 
-`npm test` covers these at the domain level.
+`npm test` covers these at the domain level using the busy-floor fixture in `lib/pos/fixtures.ts`.
 
 ## Responsive behaviour
 
-- **≥1280px:** split view with a sticky order/cart panel; the running total stays pinned.
-- **1024px (tablet):** the panel collapses into a sticky bottom bar (total + primary action) that opens a drawer.
-- **390px (mobile):** 2-column table grid, single-column screens and the same bottom bar.
+- **≥1024px:** split view with a sticky order panel (340px, growing to 440px on wider screens); the running total stays pinned. The menu shows a category rail on the left that stays put while dishes scroll.
+- **<1024px (tablet / phone):** the panel collapses into a sticky bottom bar (total + primary action) that opens a drawer. Categories become one row of pills that scrolls sideways.
+- **Dish tiles** are a fixed compact size (min 140px) and the grid fits as many per row as the screen allows: 2 on a phone, 4 at 1200px, more on larger monitors. Nothing stretches on ultra-wide screens and nothing forces the page wider than the window.
 
-Touch targets are at least 44px.
+Touch targets are at least 40px.
+# t-order
