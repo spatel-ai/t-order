@@ -1,26 +1,107 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Design tokens — mirrored from the Figma "POS Tokens" collection. */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #faf7f2;
+  --color-surface: #ffffff;
+  --color-muted: #f3eee6;
+  --color-overlay: #1f1b16;
+  --color-line: #e7e0d5;
+  --color-line-strong: #cfc5b6;
+  --color-ink: #1f1b16;
+  --color-ink-2: #6b6257;
+
+  --color-brand: #1f8a5b;
+  --color-brand-hover: #17704a;
+  --color-brand-soft: #e4f3eb;
+  --color-accent: #e8772e;
+  --color-accent-soft: #fcebdd;
+
+  --color-avail: #17704a;
+  --color-avail-soft: #e4f3eb;
+  --color-occ: #a64b0e;
+  --color-occ-soft: #fcebdd;
+  --color-bill: #2459b8;
+  --color-bill-soft: #e3ecfa;
+  --color-resv: #5b3fd1;
+  --color-resv-soft: #eee9fe;
+  --color-danger: #c8352b;
+  --color-danger-soft: #fbe6e4;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 3px rgb(31 26 20 / 0.06);
+  --shadow-overlay: 0 12px 32px rgb(31 26 20 / 0.18);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Type ramp — POS/* text styles. */
+@utility text-display {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 700;
+}
+@utility text-h1 {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+}
+@utility text-h2 {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+@utility text-body {
+  font-size: 14px;
+  line-height: 20px;
+}
+@utility text-label {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+}
+@utility text-caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+@utility text-amount {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 700;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 80mm;
+    box-shadow: none !important;
+    border: none !important;
+  }
 }
