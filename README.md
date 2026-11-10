@@ -42,7 +42,7 @@ The system starts blank: tables 1–12, no menu, no orders, no activity. **Clear
 | Path | Purpose |
 | --- | --- |
 | `lib/pos/types.ts` | Domain model: Table, DiningSession, OrderEntry, Payment, ActivityEvent |
-| `lib/pos/actions.ts` | Pure state transitions: `startSession`, `addEntry`, `cancelItem`, `transfer`, `swap`, `requestBill`, `setDiscount`, `checkout` |
+| `lib/pos/actions.ts` | Pure state transitions: `startSession`, `addEntry`, `cancelItem`, `swapTable` (uses `transfer` / `swap`), `requestBill`, `setDiscount`, `checkout` |
 | `lib/pos/selectors.ts` | Derived values: running bill, table status, dashboard stats |
 | `lib/pos/money.ts` | Integer-paise money maths, GST 5% (CGST 2.5% + SGST 2.5%), INR formatting |
 | `lib/pos/store.ts` | localStorage / sessionStorage persistence via `useSyncExternalStore` |
@@ -51,7 +51,7 @@ The system starts blank: tables 1–12, no menu, no orders, no activity. **Clear
 | `lib/pos/menu.ts` | Menu JSON parsing / merge / export |
 | `lib/pos/settings.ts` | Restaurant settings, UPI link builder, UPI ID and GSTIN validation |
 | `components/pos/ThermalBill.tsx` | The printed bill / tax invoice and the print portal |
-| `components/pos/*` | One component per Figma component (TableCard, StatusBadge, MenuItemCard, OrderItemRow, QuantityStepper, SearchInput, FilterControl, BillingSummary, PaymentSelector, ConfirmDialog, TransferModal, Toast, OrderHistoryItem, AppHeader) |
+| `components/pos/*` | One component per Figma component (TableCard, StatusBadge, MenuItemCard, OrderItemRow, QuantityStepper, SearchInput, FilterControl, BillingSummary, PaymentSelector, ConfirmDialog, Toast, OrderHistoryItem, AppHeader) |
 | `app/globals.css` | Figma design tokens as Tailwind v4 theme variables and type-ramp utilities |
 
 ## Business rules
@@ -60,8 +60,7 @@ The system starts blank: tables 1–12, no menu, no orders, no activity. **Clear
 - **Order entries** are appended (Order #1, #2, …). Earlier entries are never edited; individual items can be cancelled and are then excluded from the bill.
 - **Running bill** is always derived from the session's entries — it is never stored, so it can't drift.
 - **Table status** is derived: open session → Occupied; bill generated (checkout opened) → Billing; reservation → Reserved; otherwise Available.
-- **Transfer** moves a session to an *available* table. Same session ID, same entries, same total; the source table becomes Available.
-- **Swap** (manager only) exchanges the tables of two occupied sessions. Bills are never merged.
+- **Swap table**: the guest registered on one table has moved to another, so the bill follows them. Pick the table the bill is on, then the table the guest now sits at. A free table simply receives the bill (same session, same entries, same total; the old table becomes Available). If the new table is occupied, the two bills trade tables. Bills are never merged. No PIN is needed.
 - **Checkout** records the payment (Cash with change, UPI, Card, or Split), closes the session and releases the table.
 - Every change is written to the activity log.
 
@@ -77,7 +76,6 @@ The system starts blank: tables 1–12, no menu, no orders, no activity. **Clear
 
 Drafts are per tab on purpose: two waiters on two tabs don't overwrite each other's unsent carts. Confirmed orders go to localStorage and show up everywhere.
 
-The swap screen's manager PIN (`1234`) is a demo placeholder. A frontend-only app cannot keep a secret, so real deployments need server-side authorisation.
 
 ## Test flows
 
@@ -87,9 +85,9 @@ The app starts blank, so upload a menu first (Menu → Upload menu JSON). Then:
 | --- | --- | --- |
 | A | Table 1 → add dishes → Send to Kitchen | Table 1 Occupied, session S-1, running bill shown |
 | B | Add Items → more dishes → Confirm Additions | Same session, Order #2, bill increases |
-| C | Transfer → Table 2 → Confirm Transfer | Table 1 Available, Table 2 Occupied with the same bill |
+| C | Swap table → Table 1 → Table 2 → Move bill | Table 1 Available, Table 2 Occupied with the same bill |
 | D | Table 2 → Checkout → Print bill / UPI → Confirm received | Receipt INV-1 (Table 2 from 1), Table 2 Available |
-| E | Swap → two occupied tables → PIN 1234 → Confirm Swap | The two sessions exchange tables, bills unchanged |
+| E | Swap table → pick an occupied table as the new table → Swap tables | The two bills trade tables, each unchanged |
 
 `npm test` covers these at the domain level using the busy-floor fixture in `lib/pos/fixtures.ts`.
 

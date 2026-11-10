@@ -1,19 +1,14 @@
 "use client";
-import { ArrowLeftRight, ShieldCheck } from "lucide-react";
+import { ArrowLeftRight, ArrowRight } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { BackLink, EmptyState, WithData } from "@/components/pos/Shell";
-import { TableCard } from "@/components/pos/TableCard";
 import { Button } from "@/components/ui/Button";
-import { swap } from "@/lib/pos/actions";
+import { swapTable } from "@/lib/pos/actions";
 import { formatINR } from "@/lib/pos/money";
-import { findTable, isActive, sessionBill } from "@/lib/pos/selectors";
-import { dispatch, MANAGER_STAFF, showToast, useStaff } from "@/lib/pos/store";
-import { useNow } from "@/lib/pos/time";
-import type { DiningSession, PosData } from "@/lib/pos/types";
-
-/** Demo-only manager PIN; a real deployment would verify this server-side. */
-const MANAGER_PIN = "1234";
+import { activeSessionForTable, isActive, sessionBill, tableStatus } from "@/lib/pos/selectors";
+import { dispatch, showToast } from "@/lib/pos/store";
+import type { PosData, TableId } from "@/lib/pos/types";
 
 export default function SwapPage() {
   return (
@@ -23,129 +18,124 @@ export default function SwapPage() {
   );
 }
 
+const TILE = "flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 text-center transition disabled:cursor-not-allowed disabled:opacity-40";
+const GRID = "grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-2";
+
+/**
+ * Swap table: a guest whose order is on one table has moved to another, so the bill follows them.
+ * Pick the table the bill is on now, then the table the guest is sitting at.
+ */
 function Swap({ data }: { data: PosData }) {
   const router = useRouter();
   const params = useSearchParams();
-  const now = useNow();
-  const [staff] = useStaff();
   const occupied = data.sessions.filter(isActive).sort((a, b) => Number(a.tableId) - Number(b.tableId));
-  const initialA = occupied.find((s) => s.id === params.get("a"))?.id ?? occupied[0]?.id;
-  const [a, setA] = useState<string | undefined>(initialA);
-  const [b, setB] = useState<string | undefined>(occupied.find((s) => s.id !== initialA)?.id);
-  const [pin, setPin] = useState("");
-  const [pinError, setPinError] = useState(false);
+  const [fromId, setFromId] = useState<string | undefined>(() => occupied.find((s) => s.id === params.get("a"))?.id ?? (occupied.length === 1 ? occupied[0].id : undefined));
+  const [toPick, setTo] = useState<TableId | null>(null);
 
-  if (occupied.length < 2) return <EmptyState title="Nothing to swap" body="Swapping needs at least two occupied tables." action={{ href: "/", label: "Back to tables" }} />;
+  if (occupied.length === 0)
+    return <EmptyState title="No table to swap" body="Swap table moves a running bill to another table. Start an order first." action={{ href: "/", label: "Back to tables" }} />;
 
-  const sa = occupied.find((s) => s.id === a);
-  const sb = occupied.find((s) => s.id === b && s.id !== a);
-  const isManager = staff.role === "Manager";
+  const from = occupied.find((s) => s.id === fromId);
+  const to = toPick && toPick !== from?.tableId ? toPick : null;
+  const other = to ? activeSessionForTable(data, to) : undefined;
+  const bill = from ? sessionBill(from) : null;
 
   const confirm = () => {
-    if (!sa || !sb) return;
-    if (!isManager && pin !== MANAGER_PIN) {
-      setPinError(true);
-      return;
-    }
-    const [ta, tb] = [sa.tableId, sb.tableId];
-    if (!dispatch((d, ctx) => swap(d, sa.id, sb.id, ctx), isManager ? staff : MANAGER_STAFF)) return;
-    showToast(`Swapped Table ${ta} ↔ Table ${tb} · both sessions unchanged`, "info");
+    if (!from || !to) return;
+    const src = from.tableId;
+    if (!dispatch((d, ctx) => swapTable(d, from.id, to, ctx))) return;
+    showToast(other ? `Tables ${src} and ${to} swapped · both bills unchanged` : `Bill moved from Table ${src} to Table ${to}`, "info");
     router.push("/");
   };
 
-  const picker = (label: string, value: string | undefined, onChange: (id: string) => void, exclude?: string) => (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="mb-2 text-label text-ink-2">{label} (occupied only)</legend>
-      <div className="flex flex-wrap gap-2" role="radiogroup">
-        {occupied
-          .filter((s) => s.id !== exclude)
-          .map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              role="radio"
-              aria-checked={s.id === value}
-              onClick={() => onChange(s.id)}
-              className={`inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-label ${s.id === value ? "bg-ink text-white" : "border border-line bg-surface hover:bg-muted"}`}
-            >
-              Table {s.tableId}
-              <span className={`text-caption ${s.id === value ? "text-white/80" : "text-ink-2"}`}>{formatINR(sessionBill(s).subtotal)}</span>
-            </button>
-          ))}
-      </div>
-    </fieldset>
-  );
-
-  const preview = (title: string, cards: [string, DiningSession][]) => (
-    <section className="flex flex-1 flex-col gap-3 rounded-lg border border-line bg-surface p-4" aria-label={title}>
-      <h2 className="text-h2">{title}</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {cards.map(([tableId, s]) => (
-          <TableCard key={tableId} table={findTable(data, tableId)!} status={s.status === "billing" ? "billing" : "occupied"} session={s} now={now} compact />
-        ))}
-      </div>
-    </section>
-  );
-
   return (
-    <div className="flex flex-col gap-5 px-4 py-4 lg:px-8">
+    <div className="mx-auto flex max-w-5xl flex-col gap-5 px-4 py-4 pb-8 lg:px-8">
       <BackLink href="/" label="Tables" />
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-h1">Swap occupied tables</h1>
-        <span className="inline-flex items-center gap-1 rounded-full bg-resv-soft px-3 py-1 text-label text-resv">
-          <ShieldCheck size={16} aria-hidden /> Manager approval required
-        </span>
+      <div>
+        <h1 className="text-h1">Swap table</h1>
+        <p className="mt-1 text-body text-ink-2">Guest moved to a different table? Move their bill with them. Nothing on the bill changes.</p>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        {picker("First table", a, (id) => {
-          setA(id);
-          if (id === b) setB(occupied.find((s) => s.id !== id)?.id);
-        })}
-        {picker("Second table", sb?.id, setB, a)}
-      </div>
-      {sa && sb && (
-        <div className="flex flex-col gap-4 lg:flex-row">
-          {preview("Before", [
-            [sa.tableId, sa],
-            [sb.tableId, sb],
-          ])}
-          {preview("After swap", [
-            [sa.tableId, { ...sb, tableId: sa.tableId }],
-            [sb.tableId, { ...sa, tableId: sb.tableId }],
-          ])}
+
+      <fieldset className="rounded-lg border border-line bg-surface p-4">
+        <legend className="px-1 text-label text-ink-2">1. Bill is on table</legend>
+        <div className={GRID} role="radiogroup" aria-label="Current table">
+          {occupied.map((s) => {
+            const on = s.id === from?.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                aria-label={`From Table ${s.tableId}, ${formatINR(sessionBill(s).subtotal)}`}
+                onClick={() => setFromId(s.id)}
+                className={`${TILE} ${on ? "bg-ink text-white" : "border border-line bg-surface hover:bg-muted"}`}
+              >
+                <span className="text-body font-semibold">Table {s.tableId}</span>
+                <span className={`text-caption tabular-nums ${on ? "text-white/80" : "text-ink-2"}`}>{formatINR(sessionBill(s).subtotal)}</span>
+              </button>
+            );
+          })}
         </div>
-      )}
-      <p className="rounded-md bg-brand-soft px-4 py-3 text-body text-brand">
-        Bills are never merged. Each session keeps its ID, order entries and total — only the table assignment is exchanged. The swap is logged in the activity timeline.
-      </p>
-      <div className="flex flex-wrap items-end gap-4">
-        {isManager ? (
-          <p className="text-label text-ink-2">Signed in as {staff.name} · Manager</p>
-        ) : (
-          <label className="flex flex-col gap-1 text-label text-ink-2">
-            Manager PIN (demo: {MANAGER_PIN})
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => {
-                setPin(e.target.value.replace(/\D/g, ""));
-                setPinError(false);
-              }}
-              aria-invalid={pinError}
-              className={`min-h-11 w-40 rounded-md border bg-surface px-3 text-body tracking-[0.5em] text-ink outline-none ${pinError ? "border-danger" : "border-line focus:border-brand"}`}
-            />
-            {pinError && <span className="text-caption text-danger">Incorrect PIN</span>}
-          </label>
-        )}
-        <div className="flex-1" />
-        <Button variant="secondary" onClick={() => router.push("/")}>
-          Cancel
-        </Button>
-        <Button icon={<ArrowLeftRight size={20} />} disabled={!sa || !sb || (!isManager && pin.length < 4)} onClick={confirm}>
-          Confirm Swap
-        </Button>
+      </fieldset>
+
+      <fieldset className="rounded-lg border border-line bg-surface p-4" disabled={!from}>
+        <legend className="px-1 text-label text-ink-2">2. Guest is now sitting at</legend>
+        <div className={GRID} role="radiogroup" aria-label="New table">
+          {data.tables
+            .filter((t) => t.id !== from?.tableId)
+            .map((t) => {
+              const s = activeSessionForTable(data, t.id);
+              const reserved = tableStatus(data, t) === "reserved";
+              const on = t.id === to;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-label={`To Table ${t.id}, ${s ? "occupied" : reserved ? "reserved" : "free"}`}
+                  disabled={!from || reserved}
+                  onClick={() => setTo(t.id)}
+                  className={`${TILE} ${on ? "bg-brand text-white" : s ? "border border-occ/40 bg-occ-soft hover:brightness-95" : "border border-line bg-surface hover:bg-muted"}`}
+                >
+                  <span className="text-body font-semibold">Table {t.id}</span>
+                  <span className={`text-caption tabular-nums ${on ? "text-white/80" : s ? "text-occ" : "text-ink-2"}`}>
+                    {s ? `Occupied · ${formatINR(sessionBill(s).subtotal)}` : reserved ? "Reserved" : "Free"}
+                  </span>
+                </button>
+              );
+            })}
+        </div>
+      </fieldset>
+
+      <div className="flex flex-col gap-3 rounded-lg bg-brand-soft p-4 sm:flex-row sm:items-center" aria-live="polite">
+        <p className="min-w-0 flex-1 text-body text-brand">
+          {!from || !bill ? (
+            "Choose the table the bill is on."
+          ) : !to ? (
+            <>
+              Bill of <strong>{formatINR(bill.subtotal)}</strong> ({bill.itemCount} items) is on <strong>Table {from.tableId}</strong>. Choose where the guest is sitting now.
+            </>
+          ) : other ? (
+            <>
+              Table {to} is occupied, so the two bills trade places: <strong>{formatINR(bill.subtotal)}</strong> goes to <strong>Table {to}</strong> and{" "}
+              <strong>{formatINR(sessionBill(other).subtotal)}</strong> goes to <strong>Table {from.tableId}</strong>. Bills are never merged.
+            </>
+          ) : (
+            <>
+              Bill of <strong>{formatINR(bill.subtotal)}</strong> ({bill.itemCount} items) moves from <strong>Table {from.tableId}</strong> to <strong>Table {to}</strong>. Table {from.tableId} becomes free.
+            </>
+          )}
+        </p>
+        <div className="flex shrink-0 gap-3">
+          <Button variant="secondary" onClick={() => router.push("/")}>
+            Cancel
+          </Button>
+          <Button icon={other ? <ArrowLeftRight size={20} /> : <ArrowRight size={20} />} disabled={!from || !to} onClick={confirm}>
+            {other ? "Swap tables" : "Move bill"}
+          </Button>
+        </div>
       </div>
     </div>
   );

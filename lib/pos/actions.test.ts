@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addEntry, cancelItem, checkout, PosError, startSession, swap, transfer } from "./actions";
+import { addEntry, cancelItem, checkout, PosError, startSession, swap, swapTable, transfer } from "./actions";
 import { formatINR } from "./money";
 import { createDemoData as createSeed } from "./fixtures";
 import { activeSessionForTable, dashboardStats, findSession, findTable, sessionBill, statusCounts, tableStatus } from "./selectors";
@@ -132,9 +132,18 @@ describe("Test Flow E — swap occupied tables", () => {
     expect(after.sessions).toHaveLength(seed.sessions.length);
   });
 
-  it("is manager-only", () => {
+  it("swapTable moves the bill to a free table, or trades bills with an occupied one", () => {
     const seed = createSeed();
-    expect(() => swap(seed, "S-1038", "S-1040", cashier)).toThrow(/manager/);
+    const moved = swapTable(seed, "S-1038", "1", cashier); // table 3 → free table 1
+    expect(activeSessionForTable(moved, "1")!.id).toBe("S-1038");
+    expect(status(moved, "3")).toBe("available");
+    expect(sessionBill(activeSessionForTable(moved, "1")!).subtotal).toBe(124000);
+    expect(findSession(moved, "S-1038")!.tableHistory).toEqual(["3", "1"]);
+    const traded = swapTable(seed, "S-1038", "4", cashier); // table 3 ↔ occupied table 4
+    expect(activeSessionForTable(traded, "4")!.id).toBe("S-1038");
+    expect(activeSessionForTable(traded, "3")!.id).toBe("S-1040");
+    expect(() => swapTable(seed, "S-1038", "3", cashier)).toThrow(PosError); // same table
+    expect(() => swapTable(seed, "S-1038", "8", cashier)).toThrow(PosError); // reserved
   });
 });
 

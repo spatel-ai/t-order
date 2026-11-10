@@ -163,9 +163,8 @@ export function transfer(prev: PosData, sessionId: string, to: TableId, ctx: Act
   return data;
 }
 
-/** Manager-only: exchanges the tables of two occupied sessions. Bills are never merged. */
+/** Exchanges the tables of two occupied sessions. Bills are never merged. */
 export function swap(prev: PosData, sessionA: string, sessionB: string, ctx: ActionCtx): PosData {
-  if (ctx.staff.role !== "Manager") throw new PosError("Only a manager can swap tables.");
   const data = clone(prev);
   const a = requireActive(data, sessionA);
   const b = requireActive(data, sessionB);
@@ -182,9 +181,18 @@ export function swap(prev: PosData, sessionA: string, sessionB: string, ctx: Act
     sessionIds: [a.id, b.id],
     tables: [ta, tb],
     title: `Swapped Table ${ta} ↔ Table ${tb}`,
-    detail: `${a.id} and ${b.id} exchanged tables · bills unchanged · approved by ${ctx.staff.name}`,
+    detail: `${a.id} and ${b.id} exchanged tables · bills unchanged · by ${ctx.staff.name}`,
   });
   return data;
+}
+
+/**
+ * "Swap table": the guest registered on one table now sits at another, so their bill follows them.
+ * A free destination simply receives the bill; if another party is already there, the two bills trade tables.
+ */
+export function swapTable(prev: PosData, sessionId: string, to: TableId, ctx: ActionCtx): PosData {
+  const other = activeSessionForTable(prev, to);
+  return other && other.id !== sessionId ? swap(prev, sessionId, other.id, ctx) : transfer(prev, sessionId, to, ctx);
 }
 
 export function requestBill(prev: PosData, sessionId: string, ctx: ActionCtx): PosData {

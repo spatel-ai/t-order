@@ -65,8 +65,7 @@ function Dashboard({ data }: { data: PosData }) {
     return [
       { label: "Open order", href: `/tables/${t.id}` },
       { label: "Add items", href: `/tables/${t.id}?add=1` },
-      { label: "Transfer table", href: `/tables/${t.id}?transfer=1` },
-      { label: "Swap with…", href: `/swap?a=${s.id}` },
+      { label: "Swap table", href: `/swap?a=${s.id}` },
       { label: "Checkout", href: `/tables/${t.id}/checkout` },
     ];
   };

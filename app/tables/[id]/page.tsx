@@ -1,5 +1,5 @@
 "use client";
-import { ArrowLeftRight, ArrowRight, Check, History, Plus, Receipt } from "lucide-react";
+import { ArrowLeftRight, Check, History, Plus, Receipt } from "lucide-react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { BillingSummary } from "@/components/pos/BillingSummary";
@@ -10,13 +10,12 @@ import { OrderItemRow } from "@/components/pos/OrderItemRow";
 import { ResponsivePanel } from "@/components/pos/ResponsivePanel";
 import { BackLink, EmptyState, WithData } from "@/components/pos/Shell";
 import { StatusBadge } from "@/components/pos/StatusBadge";
-import { TransferModal } from "@/components/pos/TransferModal";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Overlay";
-import { addEntry, cancelItem, transfer } from "@/lib/pos/actions";
+import { addEntry, cancelItem } from "@/lib/pos/actions";
 import { bump, useAdditionDraft } from "@/lib/pos/drafts";
 import { formatINR } from "@/lib/pos/money";
-import { activeSessionForTable, availableTables, cartBill, cartLines, findTable, pruneCart, sessionBill, tableStatus } from "@/lib/pos/selectors";
+import { activeSessionForTable, cartBill, cartLines, findTable, pruneCart, sessionBill, tableStatus } from "@/lib/pos/selectors";
 import { dispatch, showToast } from "@/lib/pos/store";
 import { formatTime } from "@/lib/pos/time";
 import type { DiningSession, OrderItem, PosData, Table } from "@/lib/pos/types";
@@ -51,7 +50,6 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
   const params = useSearchParams();
   const view = params.get("view") === "bill" ? "bill" : "menu";
   const addOpen = params.get("add") === "1";
-  const transferOpen = params.get("transfer") === "1";
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params.toString());
     if (value === null) next.delete(key);
@@ -77,21 +75,11 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
     router.replace(`${pathname}?view=bill`, { scroll: false });
   };
 
-  const doTransfer = (to: Table["id"]) => {
-    const from = session.tableId;
-    if (!dispatch((d, ctx) => transfer(d, session.id, to, ctx))) return;
-    showToast(`Session ${session.id} moved Table ${from} → Table ${to} · ${formatINR(bill.subtotal)} preserved`, "info");
-    router.push("/");
-  };
-
   const panelBody = (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-3 gap-2">
-        <Button variant="secondary" size="md" icon={<ArrowRight size={16} />} onClick={() => setParam("transfer", "1")}>
-          Transfer
-        </Button>
+      <div className="grid grid-cols-2 gap-2">
         <ButtonLink href={`/swap?a=${session.id}`} variant="secondary" size="md" icon={<ArrowLeftRight size={16} />}>
-          Swap
+          Swap table
         </ButtonLink>
         <ButtonLink href={`/activity?session=${session.id}`} variant="secondary" size="md" icon={<History size={16} />}>
           Log
@@ -292,14 +280,6 @@ function ActiveOrder({ data, table, session }: { data: PosData; table: Table; se
           </section>
         </div>
       </Drawer>
-
-      <TransferModal
-        open={transferOpen}
-        session={session}
-        destinations={availableTables(data)}
-        onClose={() => setParam("transfer", null)}
-        onConfirm={doTransfer}
-      />
 
       <ConfirmDialog
         open={!!cancelTarget}
